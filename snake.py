@@ -2,6 +2,9 @@ from pygame.locals import *
 from random import randint
 import pygame
 import time
+from tracker import Tracker
+from calibrate import calibrate_user
+from queue import Queue
  
 class Apple:
     x = 0
@@ -83,15 +86,11 @@ class Game:
         return False
  
 import os
-from et import MyEyetracker
-from multiprocessing import Process
 
-class App:
+class Snake:
  
     windowWidth = 1920
     windowHeight = 1080
-    player = 0
-    apple = 0
  
     def __init__(self):
         self._running = True
@@ -102,15 +101,13 @@ class App:
         self.player = Player(3) 
         self.apple = Apple(5,5)
         self.RESOURCES = 'resources'
-        self.eyetracker = MyEyetracker()
-        self.eyetracker.start_collection()
-        self.direction = None
  
     def on_init(self):
         pygame.init()
-        self._display_surf = pygame.display.set_mode((self.windowWidth,self.windowHeight), pygame.HWSURFACE)
- 
-        pygame.display.set_caption('Pygame pythonspot.com example')
+        #self._display_surf = pygame.display.set_mode((self.windowWidth,self.windowHeight), pygame.HWSURFACE)
+        self._display_surf = pygame.Surface((windowWidth, windowHeight))
+        self._display_surf.fill('#000000')
+
         self._running = True
         self._image_surf = pygame.image.load(os.path.join(self.RESOURCES, "snake.jpg")).convert()
         self._apple_surf = pygame.image.load(os.path.join(self.RESOURCES, "food.jpg")).convert()
@@ -147,80 +144,58 @@ class App:
         pygame.display.flip()
  
     def on_cleanup(self):
-        self.eyetracker.stop_collection()
+        self.eyetracker.stop_recording()
         pygame.quit()
  
-    def on_execute(self):
-        if self.on_init() == False:
-            self._running = False
- 
-        while( self._running ):
-            pygame.event.pump()
-            keys = pygame.key.get_pressed()
- 
-            if (keys[K_RIGHT]):
-                self.player.moveRight()
- 
-            if (keys[K_LEFT]):
-                self.player.moveLeft()
- 
-            if (keys[K_UP]):
-                self.player.moveUp()
- 
-            if (keys[K_DOWN]):
-                self.player.moveDown()
- 
-            if (keys[K_ESCAPE]):
-                self._running = False
- 
-            self.on_loop()
-            self.on_render()
- 
-            time.sleep (50.0 / 1000.0)
-
-        self.on_cleanup()
-
     import sys
 
-    def get_direction(self):
+    def listen_for_fixations(self, fixation_point_queue):
         while True:
-            fixation_point_data = self.eyetracker.wait_for_fixation_point()
-            x, y = fixation_point_data[1][0]
-            x, y = 1920 * x, 1080 * y
-            print(x, y)
-            sys.stdout.flush()
+            stime, etime, spos = self.eyetracker.get_fixation()
+            fixation_time = etime - stime
+            fixation_point_queue.put(fixation_time, spos)
+
+    def get_direction(self, fixation_points):
+        fixation_points.sort(key=lambda fixation_point: fixation_point[0], reverse=True)
+        direction = fixation_points[0]
+        print(direction)
 
     def on_execute_eye_tracking(self):
         if self.on_init() == False:
             self._running = False
 
         # Put eye code here
-        #p = Process(target=self.get_direction)
-        #p.start()
+        fixation_point_queue = Queue()
+
+        import threading
+        thread = threading.Thread(target=self.listen_for_fixations, args=(fixation_point_queue,))
+        thread.start()
  
         while( self._running ):
-            print('loop')
             pygame.event.pump()
-            
-            if self.direction:
-                pass
 
-            fixation_point_data = self.eyetracker.wait_for_fixation_point()
-            #x, y = fixation_point_data[1][0]
-            #x, y = 1920 * x, 1080 * y
-            #print(x, y)
+            fixations = []
+            while not fixation_point_queue.empty():
+                fixations.append(fixation_point_queue.get())
 
-            #self.direction = None
+            if fixations:
+                direction = self.get_direction(fixations)
  
             self.on_loop()
             self.on_render()
  
             time.sleep (50.0 / 1000.0)
 
-        #p.join()
 
         self.on_cleanup()
  
-if __name__ == "__main__" :
-    theApp = App()
-    theApp.on_execute_eye_tracking()
+user = 'robert'
+
+if __name__ == "__main__":
+    snake = Snake()
+    calibrate_user(user)
+    tracker = Tracker(user)
+    tracker.start_recording()
+    
+    tracker.stop_recording()
+    
